@@ -1,0 +1,13 @@
+# Phase 1: SO-100 Leader FK & Visualization
+numpy>=1.24.0
+flask>=2.3.0
+flask-cors>=4.0.0
+pyserial>=3.5
+
+# Future phases
+# Phase 2: AUBO i5 Control
+# pyaubo-sdk
+
+# Optional: For development
+# ipython
+# jupyter
