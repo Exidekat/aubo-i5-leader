@@ -21,12 +21,12 @@ import argparse
 import numpy as np
 from pathlib import Path
 
-# Add ltx_vla submodule to path
-sys.path.insert(0, str(Path(__file__).parent / "submodules" / "ltx_vla"))
+# Add external directory to path
+sys.path.insert(0, str(Path(__file__).parent / "external"))
 
-from ltx_vla.robots.so100_direct import DirectSO100
-from ltx_vla.visualization.forward_kinematics import SO100ForwardKinematics
-from ltx_vla.visualization.viz_server import RobotVizServer
+from so100_direct import DirectSO100
+from forward_kinematics import SO100ForwardKinematics
+from viz_server import RobotVizServer
 
 
 def rotation_matrix_to_euler(R: np.ndarray) -> tuple[float, float, float]:

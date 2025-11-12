@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SO-100 Robot Arm Visualization</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            overflow: hidden;
+        }
+
+        #container {
+            display: flex;
+            height: 100vh;
+        }
+
+        #canvas-container {
+            flex: 1;
+            position: relative;
+        }
+
+        #sidebar {
+            width: 320px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+
+        .section {
+            margin-bottom: 25px;
+        }
+
+        .section-title {
+            font-size: 16px;
+            color: #4CAF50;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+
+        .joint-info {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 8px;
+            margin-bottom: 5px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        .joint-name {
+            color: #FFD700;
+            font-weight: bold;
+            cursor: pointer;
+            transition: color 0.2s, text-decoration 0.2s;
+        }
+
+        .joint-name:hover {
+            color: #FFA500;
+            text-decoration: underline;
+        }
+
+        .joint-name.active {
+            color: #FF4500;
+            animation: pulse 1s infinite;
+        }
+
+        .joint-value {
+            float: right;
+            color: #87CEEB;
+        }
+
+        #status {
+            padding: 10px;
+            background: rgba(76, 175, 80, 0.2);
+            border-radius: 5px;
+            font-size: 12px;
+            text-align: center;
+        }
+
+        .controls {
+            margin-top: 15px;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            background: #4CAF50;
+            border: none;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #45a049;
+        }
+
+        #info-overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 14px;
+            pointer-events: none;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #FFD700;
+        }
+
+        .trajectory-info {
+            font-size: 12px;
+            color: #87CEEB;
+            margin-top: 5px;
+        }
+
+        /* Pulse animation for LIVE indicator */
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="canvas-container">
+            <div id="info-overlay">
+                <div>🤖 SO-100 Robot Arm</div>
+                <div style="font-size: 12px; color: #87CEEB; margin-top: 5px;">
+                    Rotate: Left Mouse | Pan: Right Mouse | Zoom: Scroll
+                </div>
+            </div>
+        </div>
+        <div id="sidebar">
+            <h1>🤖 SO-100 Visualization</h1>
+
+            <div id="status" class="loading">
+                Connecting to server...
+            </div>
+
+            <div class="section">
+                <div class="section-title">Joint Angles (radians)</div>
+                <div style="font-size: 11px; color: #87CEEB; margin-bottom: 8px;">
+                    Press 1-6 to test each joint
+                </div>
+                <div id="joint-angles">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">End Effector Position</div>
+                <div id="end-effector">
+                    <div class="joint-info">
+                        <span class="joint-name">X:</span>
+                        <span class="joint-value" id="ee-x">0.000</span>
+                    </div>
+                    <div class="joint-info">
+                        <span class="joint-name">Y:</span>
+                        <span class="joint-value" id="ee-y">0.000</span>
+                    </div>
+                    <div class="joint-info">
+                        <span class="joint-name">Z:</span>
+                        <span class="joint-value" id="ee-z">0.000</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Gripper</div>
+                <div class="joint-info">
+                    <span class="joint-name">State:</span>
+                    <span class="joint-value" id="gripper-state">0.00</span>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-title">Action Trajectory</div>
+                <div class="trajectory-info" id="trajectory-info">
+                    No trajectory data
+                </div>
+            </div>
+
+            <div class="controls">
+                <button onclick="toggleTrajectory()">Toggle Trajectory</button>
+                <button onclick="toggleJointAxes()">Toggle Joint Axes</button>
+                <button onclick="toggle3DModel()">Toggle 3D Model</button>
+                <button onclick="resetView()">Reset Camera View</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Three.js loaded locally (CDN was corrupted) -->
+    <script src="/static/js/three.min.js"></script>
+    <script src="/static/js/OrbitControls.js"></script>
+
+    <!-- STLLoader inline (CDN loading unreliable) -->
+    <script>
+        // Simple STLLoader for Three.js r128
+        THREE.STLLoader = function (manager) {
+            this.manager = (manager !== undefined) ? manager : THREE.DefaultLoadingManager;
+        };
+
+        THREE.STLLoader.prototype = {
+            constructor: THREE.STLLoader,
+
+            load: function (url, onLoad, onProgress, onError) {
+                var scope = this;
+                var loader = new THREE.FileLoader(scope.manager);
+                loader.setResponseType('arraybuffer');
+                loader.load(url, function (data) {
+                    try {
+                        onLoad(scope.parse(data));
+                    } catch (e) {
+                        if (onError) {
+                            onError(e);
+                        } else {
+                            console.error(e);
+                        }
+                        scope.manager.itemError(url);
+                    }
+                }, onProgress, onError);
+            },
+
+            parse: function (data) {
+                function isBinary(data) {
+                    var reader = new DataView(data);
+                    var numFaces = reader.getUint32(80, true);
+                    var faceSize = (32 / 8 * 3) + ((32 / 8 * 3) * 3) + (16 / 8);
+                    var numExpectedBytes = 80 + (32 / 8) + (numFaces * faceSize);
+                    return numExpectedBytes === reader.byteLength;
+                }
+
+                function parseBinary(data) {
+                    var reader = new DataView(data);
+                    var faces = reader.getUint32(80, true);
+                    var geometry = new THREE.BufferGeometry();
+                    var vertices = [];
+                    var normals = [];
+
+                    for (var face = 0; face < faces; face++) {
+                        var start = 84 + face * 50;
+                        var nx = reader.getFloat32(start, true);
+                        var ny = reader.getFloat32(start + 4, true);
+                        var nz = reader.getFloat32(start + 8, true);
+
+                        for (var i = 1; i <= 3; i++) {
+                            var vStart = start + i * 12;
+                            vertices.push(reader.getFloat32(vStart, true));
+                            vertices.push(reader.getFloat32(vStart + 4, true));
+                            vertices.push(reader.getFloat32(vStart + 8, true));
+                            normals.push(nx, ny, nz);
+                        }
+                    }
+
+                    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                    geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+                    return geometry;
+                }
+
+                function parseASCII(data) {
+                    var geometry = new THREE.BufferGeometry();
+                    var patternFace = /facet([\s\S]*?)endfacet/g;
+                    var patternNormal = /normal[\s]+([\-+]?[0-9]+\.?[0-9]*([eE][\-+]?[0-9]+)?)+[\s]+([\-+]?[0-9]*\.?[0-9]+([eE][\-+]?[0-9]+)?)+[\s]+([\-+]?[0-9]*\.?[0-9]+([eE][\-+]?[0-9]+)?)+/g;
+                    var patternVertex = /vertex[\s]+([\-+]?[0-9]+\.?[0-9]*([eE][\-+]?[0-9]+)?)+[\s]+([\-+]?[0-9]*\.?[0-9]+([eE][\-+]?[0-9]+)?)+[\s]+([\-+]?[0-9]*\.?[0-9]+([eE][\-+]?[0-9]+)?)+/g;
+                    var vertices = [];
+                    var normals = [];
+                    var normal;
+                    var result;
+                    var text = '';
+
+                    var view = new Uint8Array(data);
+                    var length = view.length;
+                    for (var i = 0; i < length; i++) {
+                        text += String.fromCharCode(view[i]);
+                    }
+
+                    while ((result = patternFace.exec(text)) !== null) {
+                        var vertexCountPerFace = 0;
+                        var normalCountPerFace = 0;
+                        var faceText = result[0];
+
+                        while ((result = patternNormal.exec(faceText)) !== null) {
+                            normal = [parseFloat(result[1]), parseFloat(result[3]), parseFloat(result[5])];
+                            normalCountPerFace++;
+                        }
+
+                        while ((result = patternVertex.exec(faceText)) !== null) {
+                            vertices.push(parseFloat(result[1]), parseFloat(result[3]), parseFloat(result[5]));
+                            normals.push(normal[0], normal[1], normal[2]);
+                            vertexCountPerFace++;
+                        }
+                    }
+
+                    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+                    geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+                    return geometry;
+                }
+
+                return isBinary(data) ? parseBinary(data) : parseASCII(data);
+            }
+        };
+    </script>
+
+    <script>
+        // ========== Global Variables ==========
+        let scene, camera, renderer, controls;
+        let robotGroup, trajectoryGroup;
+        let jointSpheres = [];
+        let linkCylinders = [];
+        let showTrajectory = true;
+        let showJointAxes = true;  // Toggle for rotation planes/axes/frames
+        let use3DModel = true;  // Toggle for 3D model vs primitive shapes
+        let meshesLoaded = false;
+        let meshCache = {};  // Cache for loaded STL meshes
+        let config = null;
+
+        // ========== Three.js Setup ==========
+        function initThreeJS() {
+            const container = document.getElementById('canvas-container');
+
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a2e);
+            scene.fog = new THREE.Fog(0x1a1a2e, 1, 10);
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(
+                60,
+                container.clientWidth / container.clientHeight,
+                0.01,
+                100
+            );
+            camera.position.set(0.8, 0.8, 0.8);
+            camera.lookAt(0, 0, 0.2);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            container.appendChild(renderer.domElement);
+
+            // Controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.target.set(0, 0, 0.2);
+
+            // Lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 10, 7.5);
+            directionalLight.castShadow = true;
+            scene.add(directionalLight);
+
+            const pointLight = new THREE.PointLight(0x4CAF50, 1, 10);
+            pointLight.position.set(0, 0, 0.5);
+            scene.add(pointLight);
+
+            // Grid and axes
+            const gridHelper = new THREE.GridHelper(2, 20, 0x444444, 0x222222);
+            scene.add(gridHelper);
+
+            const axesHelper = new THREE.AxesHelper(0.3);
+            scene.add(axesHelper);
+
+            // Robot group
+            robotGroup = new THREE.Group();
+            scene.add(robotGroup);
+
+            // Trajectory group
+            trajectoryGroup = new THREE.Group();
+            scene.add(trajectoryGroup);
+
+            // Handle resize
+            window.addEventListener('resize', onWindowResize, false);
+
+            // Start animation loop
+            animate();
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('canvas-container');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // ========== STL Mesh Loading ==========
+        async function loadSTLMeshes() {
+            console.log('🔧 STLLoader available:', typeof THREE.STLLoader !== 'undefined');
+
+            const loader = new THREE.STLLoader();
+            const meshFiles = [
+                { name: 'base', file: 'Base.STL', joint: 0 },
+                { name: 'shoulder', file: 'Shoulder_Rotation_Pitch.STL', joint: 1 },
+                { name: 'upper_arm', file: 'Upper_Arm.STL', joint: 2 },
+                { name: 'lower_arm', file: 'Lower_Arm.STL', joint: 3 },
+                { name: 'wrist', file: 'Wrist_Pitch_Roll.STL', joint: 4 },
+                { name: 'fixed_gripper', file: 'Fixed_Gripper.STL', joint: 5 },
+                { name: 'moving_jaw', file: 'Moving_Jaw.STL', joint: 6 }
+            ];
+
+            console.log(`📦 Loading ${meshFiles.length} STL meshes...`);
+
+            for (const meshInfo of meshFiles) {
+                try {
+                    console.log(`  Loading ${meshInfo.file}...`);
+                    const geometry = await new Promise((resolve, reject) => {
+                        const url = `/static/models/so100/meshes/${meshInfo.file}`;
+                        console.log(`    URL: ${url}`);
+                        loader.load(
+                            url,
+                            (geo) => {
+                                console.log(`    ✓ Loaded ${meshInfo.file}: ${geo.attributes.position.count} vertices`);
+                                resolve(geo);
+                            },
+                            (progress) => {
+                                if (progress.lengthComputable) {
+                                    const percent = (progress.loaded / progress.total * 100).toFixed(0);
+                                    console.log(`    ${meshInfo.file}: ${percent}%`);
+                                }
+                            },
+                            (err) => {
+                                console.error(`    ✗ Error loading ${meshInfo.file}:`, err);
+                                reject(err);
+                            }
+                        );
+                    });
+
+                    // TEST: Don't scale - check if STL is already in meters
+                    // geometry.scale(0.001, 0.001, 0.001);
+
+                    // DON'T center - this breaks kinematic chain positioning!
+                    // The meshes are designed to be positioned at specific attachment points
+                    // geometry.computeBoundingBox();
+                    // const center = geometry.boundingBox.getCenter(new THREE.Vector3());
+                    // geometry.translate(-center.x, -center.y, -center.z);
+
+                    // Store in cache with bounding box info for debugging
+                    geometry.computeBoundingBox();
+                    const bbox = geometry.boundingBox;
+
+                    meshCache[meshInfo.name] = {
+                        geometry: geometry,
+                        joint: meshInfo.joint,
+                        bbox: {
+                            min: bbox.min.toArray(),
+                            max: bbox.max.toArray()
+                        }
+                    };
+
+                    console.log(`  ✓ Cached ${meshInfo.name} (joint ${meshInfo.joint})`);
+                } catch (error) {
+                    console.error(`  ✗ Failed to load ${meshInfo.file}:`, error);
+                }
+            }
+
+            meshesLoaded = Object.keys(meshCache).length > 0;
+            console.log(`📊 Mesh loading complete: ${Object.keys(meshCache).length}/${meshFiles.length} loaded`);
+
+            if (meshesLoaded) {
+                console.log('✅ Meshes ready for rendering');
+                console.log('   Loaded:', Object.keys(meshCache).join(', '));
+            } else {
+                console.warn('⚠️  No meshes loaded, falling back to primitive shapes');
+                use3DModel = false;
+            }
+        }
+
+        // ========== Robot Visualization ==========
+        function updateRobotVisualization(state) {
+            // Clear previous robot and dispose of geometries/materials to prevent memory leak
+            while (robotGroup.children.length > 0) {
+                const child = robotGroup.children[0];
+                robotGroup.remove(child);
+
+                // Dispose of geometry and material to free memory
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) {
+                    if (Array.isArray(child.material)) {
+                        child.material.forEach(m => m.dispose());
+                    } else {
+                        child.material.dispose();
+                    }
+                }
+            }
+            jointSpheres = [];
+            linkCylinders = [];
+
+            const positions = state.joint_positions;
+            const frames = state.joint_frames;
+            if (!positions || positions.length === 0) return;
+
+            // Use 3D meshes if available and enabled
+            if (use3DModel && meshesLoaded) {
+                renderWithMeshes(state, positions, frames);
+            } else {
+                renderWithPrimitives(state, positions, frames);
+            }
+        }
+
+        function renderWithMeshes(state, positions, frames) {
+            // Render actual SO-100 STL meshes at joint positions
+            const numMeshes = Object.keys(meshCache).length;
+
+            // Only log occasionally to avoid spam
+            if (Math.random() < 0.05) {
+                console.log(`🎨 Rendering ${numMeshes} meshes, robotGroup has ${robotGroup.children.length} children before clear`);
+            }
+
+            // Realistic robot material
+            const material = new THREE.MeshStandardMaterial({
+                color: 0xCCCCCC,  // Light gray
+                metalness: 0.6,
+                roughness: 0.4,
+                side: THREE.DoubleSide  // Render both sides (fixes inside-out meshes)
+            });
+
+            let meshesAdded = 0;
+
+            // Render each mesh at its corresponding joint position
+            for (const [name, meshData] of Object.entries(meshCache)) {
+                const joint = meshData.joint;
+                if (joint >= frames.length) {
+                    console.warn(`⚠️  Skipping ${name}: joint ${joint} >= frames.length ${frames.length}`);
+                    continue;
+                }
+
+                const frame = frames[joint];
+                const pos = frame.position;
+                const rotation = frame.rotation;
+
+                // Create mesh from cached geometry
+                const geometry = meshData.geometry.clone();
+                const mesh = new THREE.Mesh(geometry, material.clone());
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                mesh.name = name; // For debugging
+
+                // Position at joint
+                mesh.position.set(pos[0], pos[1], pos[2]);
+
+                // Apply rotation from forward kinematics
+                const rotMatrix = new THREE.Matrix4();
+                rotMatrix.set(
+                    rotation[0][0], rotation[0][1], rotation[0][2], 0,
+                    rotation[1][0], rotation[1][1], rotation[1][2], 0,
+                    rotation[2][0], rotation[2][1], rotation[2][2], 0,
+                    0, 0, 0, 1
+                );
+                mesh.setRotationFromMatrix(rotMatrix);
+
+                // CORRECTION: Rotate each mesh 90° CCW about its local X-axis
+                // This compensates for mesh orientation relative to joint frames
+                // mesh.rotateX(Math.PI / 2);
+
+                robotGroup.add(mesh);
+                meshesAdded++;
+            }
+
+            // Log occasionally (not every frame)
+            if (Math.random() < 0.05) {
+                console.log(`✅ Rendered ${meshesAdded}/${numMeshes} 3D model meshes`);
+            }
+
+            // Render end effector marker
+            const ee_pos = state.end_effector_pos;
+            const eeGeometry = new THREE.BoxGeometry(0.04, 0.04, 0.04);
+            const eeMaterial = new THREE.MeshStandardMaterial({
+                color: 0xFFD700,
+                emissive: 0xFFD700,
+                emissiveIntensity: 0.5
+            });
+            const eeMesh = new THREE.Mesh(eeGeometry, eeMaterial);
+            eeMesh.position.set(ee_pos[0], ee_pos[1], ee_pos[2]);
+            eeMesh.rotation.set(Math.PI/4, Math.PI/4, 0);
+            robotGroup.add(eeMesh);
+
+            // Still render joint axes if enabled
+            if (showJointAxes) {
+                renderJointAxes(frames);
+            }
+        }
+
+        function renderJointAxes(frames) {
+            // Render rotation planes, axes, and coordinate frames for revolute joints
+            for (let i = 0; i < frames.length; i++) {
+                const frame = frames[i];
+                const pos = frame.position;
+                const z_axis = frame.z_axis;
+
+                // Rotation axis disk (shows revolute joint constraint) - LARGE and BRIGHT
+                const diskGeom = new THREE.CircleGeometry(0.06, 32);  // 6cm radius - 4x joint sphere!
+                const diskMat = new THREE.MeshBasicMaterial({
+                    color: 0x00FF00,  // Bright green
+                    transparent: true,
+                    opacity: 0.6,  // More opaque for visibility
+                    side: THREE.DoubleSide
+                });
+                const disk = new THREE.Mesh(diskGeom, diskMat);
+                disk.position.set(pos[0], pos[1], pos[2]);
+
+                // Orient disk perpendicular to rotation axis (z_axis)
+                const up = new THREE.Vector3(z_axis[0], z_axis[1], z_axis[2]);
+                disk.quaternion.setFromUnitVectors(
+                    new THREE.Vector3(0, 0, 1),
+                    up.normalize()
+                );
+                robotGroup.add(disk);
+
+                // Rotation axis arrow (shows direction of rotation axis) - THICK and LONG
+                const arrowLength = 0.1;  // 10cm long!
+                const arrowOrigin = new THREE.Vector3(pos[0], pos[1], pos[2]);
+                const arrowDir = new THREE.Vector3(z_axis[0], z_axis[1], z_axis[2]).normalize();
+                const arrow = new THREE.ArrowHelper(
+                    arrowDir,
+                    arrowOrigin,
+                    arrowLength,
+                    0xFFFF00,  // YELLOW for better visibility vs green disk
+                    0.03,  // Larger arrow head
+                    0.02   // Wider arrow head
+                );
+                robotGroup.add(arrow);
+
+                // Coordinate frame axes (X=red, Y=green, Z=blue)
+                if (i > 0) {  // Skip base frame (too cluttered)
+                    const axisLength = 0.03;
+                    const rotation = frame.rotation;
+
+                    // X axis (red)
+                    const xAxis = new THREE.Vector3(rotation[0][0], rotation[1][0], rotation[2][0]);
+                    const xArrow = new THREE.ArrowHelper(xAxis, arrowOrigin, axisLength, 0xFF0000, 0.005, 0.005);
+                    robotGroup.add(xArrow);
+
+                    // Y axis (green)
+                    const yAxis = new THREE.Vector3(rotation[0][1], rotation[1][1], rotation[2][1]);
+                    const yArrow = new THREE.ArrowHelper(yAxis, arrowOrigin, axisLength, 0x00FF00, 0.005, 0.005);
+                    robotGroup.add(yArrow);
+
+                    // Z axis (blue) - this is the rotation axis
+                    const zAxis = new THREE.Vector3(rotation[0][2], rotation[1][2], rotation[2][2]);
+                    const zArrow = new THREE.ArrowHelper(zAxis, arrowOrigin, axisLength, 0x0000FF, 0.005, 0.005);
+                    robotGroup.add(zArrow);
+                }
+            }
+        }
+
+        function renderWithPrimitives(state, positions, frames) {
+            // Original primitive rendering (cylinders and spheres)
+
+            // Log joint positions for comparison with meshes
+            if (Math.random() < 0.1) {
+                console.log('🔧 Primitive joint positions (for comparison):');
+                for (let i = 0; i < positions.length; i++) {
+                    console.log(`   Joint ${i}: [${positions[i][0].toFixed(3)}, ${positions[i][1].toFixed(3)}, ${positions[i][2].toFixed(3)}]`);
+                }
+            }
+
+            // Draw links as cylinders (FIRST, so joints appear on top)
+            for (let i = 0; i < positions.length - 1; i++) {
+                const start = new THREE.Vector3(positions[i][0], positions[i][1], positions[i][2]);
+                const end = new THREE.Vector3(positions[i+1][0], positions[i+1][1], positions[i+1][2]);
+                const link = createLink(start, end);
+                robotGroup.add(link);
+                linkCylinders.push(link);
+            }
+
+            // Draw revolute joints with rotation axis indicators
+            for (let i = 0; i < frames.length; i++) {
+                const frame = frames[i];
+                const pos = frame.position;
+                const z_axis = frame.z_axis;
+
+                // Joint housing (small sphere)
+                const sphereGeom = new THREE.SphereGeometry(0.015, 16, 16);
+                const sphereMat = new THREE.MeshStandardMaterial({
+                    color: 0x4CAF50,
+                    metalness: 0.7,
+                    roughness: 0.3
+                });
+                const sphere = new THREE.Mesh(sphereGeom, sphereMat);
+                sphere.position.set(pos[0], pos[1], pos[2]);
+                sphere.castShadow = true;
+                robotGroup.add(sphere);
+                jointSpheres.push(sphere);
+            }
+
+            // Render joint axes indicators if toggle is enabled
+            if (showJointAxes) {
+                renderJointAxes(frames);
+            }
+
+            // Draw end effector marker
+            const ee_pos = state.end_effector_pos;
+            const eeGeometry = new THREE.BoxGeometry(0.04, 0.04, 0.04);
+            const eeMaterial = new THREE.MeshStandardMaterial({
+                color: 0xFFD700,
+                emissive: 0xFFD700,
+                emissiveIntensity: 0.5
+            });
+            const eeMesh = new THREE.Mesh(eeGeometry, eeMaterial);
+            eeMesh.position.set(ee_pos[0], ee_pos[1], ee_pos[2]);
+            eeMesh.rotation.set(Math.PI/4, Math.PI/4, 0);
+            robotGroup.add(eeMesh);
+
+            // Add label for revolute joints
+            const labelDiv = document.getElementById('info-overlay');
+            labelDiv.innerHTML = `
+                <div style="font-size: 18px; font-weight: bold;">🤖 SO-100 Robot Arm</div>
+                <div style="font-size: 12px; color: #87CEEB; margin-top: 5px;">
+                    Rotate: Left Mouse | Pan: Right Mouse | Zoom: Scroll
+                </div>
+                <div style="font-size: 12px; font-weight: bold; color: #00FF00; margin-top: 10px; background: rgba(0,0,0,0.5); padding: 5px; border-radius: 3px;">
+                    🟢 Green disks = Rotation planes<br>
+                    🟡 Yellow arrows = Rotation axes<br>
+                    🔴🟢🔵 RGB axes = Joint frames
+                </div>
+            `;
+        }
+
+        function createLink(start, end) {
+            const direction = new THREE.Vector3().subVectors(end, start);
+            const length = direction.length();
+
+            // Create a group for the link (can contain multiple meshes)
+            const linkGroup = new THREE.Group();
+
+            // Main structural beam (thicker, more rigid looking)
+            const beamGeometry = new THREE.CylinderGeometry(0.012, 0.012, length, 16);
+            const beamMaterial = new THREE.MeshStandardMaterial({
+                color: 0x555555,  // Dark gray for rigid structure
+                metalness: 0.8,
+                roughness: 0.2
+            });
+            const beam = new THREE.Mesh(beamGeometry, beamMaterial);
+            beam.castShadow = true;
+            linkGroup.add(beam);
+
+            // Position and orient the entire link group
+            linkGroup.position.copy(start).add(direction.multiplyScalar(0.5));
+            linkGroup.quaternion.setFromUnitVectors(
+                new THREE.Vector3(0, 1, 0),
+                direction.normalize()
+            );
+
+            return linkGroup;
+        }
+
+        function updateTrajectoryVisualization(trajectoryData) {
+            // Clear previous trajectory
+            while (trajectoryGroup.children.length > 0) {
+                trajectoryGroup.remove(trajectoryGroup.children[0]);
+            }
+
+            if (!showTrajectory || !trajectoryData || trajectoryData.length === 0) {
+                return;
+            }
+
+            // Draw trajectory path (line through end effector positions)
+            const points = [];
+            for (const state of trajectoryData) {
+                const pos = state.end_effector_pos;
+                points.push(new THREE.Vector3(pos[0], pos[1], pos[2]));
+            }
+
+            if (points.length > 1) {
+                const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                const material = new THREE.LineBasicMaterial({
+                    color: 0xFF69B4,
+                    linewidth: 2,
+                    transparent: true,
+                    opacity: 0.6
+                });
+                const line = new THREE.Line(geometry, material);
+                trajectoryGroup.add(line);
+            }
+
+            // Draw trajectory points
+            for (let i = 0; i < trajectoryData.length; i++) {
+                const state = trajectoryData[i];
+                const pos = state.end_effector_pos;
+                const geometry = new THREE.SphereGeometry(0.008, 8, 8);
+                const material = new THREE.MeshBasicMaterial({
+                    color: 0xFF69B4,
+                    transparent: true,
+                    opacity: 0.5 * (1 - i / trajectoryData.length)
+                });
+                const sphere = new THREE.Mesh(geometry, material);
+                sphere.position.set(pos[0], pos[1], pos[2]);
+                trajectoryGroup.add(sphere);
+            }
+        }
+
+        // ========== UI Updates ==========
+        function updateUI(state, config) {
+            // Status with mode indicator
+            const mode = state.mode || 'idle';
+            let statusHTML = '✓ Connected';
+            let statusBg = 'rgba(76, 175, 80, 0.3)';
+
+            if (mode === 'real') {
+                statusHTML += ' <span style="color: #FF4444; font-weight: bold; animation: pulse 1s infinite;">🔴 LIVE</span>';
+                statusBg = 'rgba(255, 68, 68, 0.2)';
+            } else if (mode === 'demo') {
+                statusHTML += ' <span style="color: #4CAF50;">🎬 DEMO</span>';
+            }
+
+            document.getElementById('status').innerHTML = statusHTML;
+            document.getElementById('status').style.background = statusBg;
+
+            // Joint angles
+            const jointNames = config ? config.joint_names : [
+                'shoulder_pan', 'shoulder_lift', 'elbow_flex',
+                'wrist_flex', 'wrist_roll', 'gripper'
+            ];
+
+            const jointAnglesDiv = document.getElementById('joint-angles');
+            jointAnglesDiv.innerHTML = '';
+            for (let i = 0; i < state.joint_angles.length; i++) {
+                const div = document.createElement('div');
+                div.className = 'joint-info';
+                div.innerHTML = `
+                    <span class="joint-name" id="joint-name-${i}" onclick="testJoint(${i}, '${jointNames[i]}')" title="Click to test this joint">${jointNames[i]}:</span>
+                    <span class="joint-value">${state.joint_angles[i].toFixed(3)}</span>
+                `;
+                jointAnglesDiv.appendChild(div);
+            }
+
+            // End effector
+            document.getElementById('ee-x').textContent = state.end_effector_pos[0].toFixed(3);
+            document.getElementById('ee-y').textContent = state.end_effector_pos[1].toFixed(3);
+            document.getElementById('ee-z').textContent = state.end_effector_pos[2].toFixed(3);
+
+            // Gripper
+            document.getElementById('gripper-state').textContent = state.gripper_state.toFixed(2);
+        }
+
+        function updateTrajectoryInfo(trajectoryData) {
+            const info = document.getElementById('trajectory-info');
+            if (trajectoryData && trajectoryData.length > 0) {
+                info.textContent = `${trajectoryData.length} future states | ${showTrajectory ? 'Visible' : 'Hidden'}`;
+            } else {
+                info.textContent = 'No trajectory data';
+            }
+        }
+
+        // ========== API Calls ==========
+        async function fetchRobotState() {
+            try {
+                const response = await fetch('/api/robot_state');
+                const state = await response.json();
+
+                // Only log occasionally to avoid spam
+                if (Math.random() < 0.02) {
+                    console.log('Fetched state:', {
+                        joint_angles: state.joint_angles,
+                        mode: state.mode,
+                        has_frames: !!state.joint_frames
+                    });
+                }
+
+                // Store for toggle re-render
+                window.lastRobotState = state;
+
+                updateRobotVisualization(state);
+                updateUI(state, config);
+            } catch (error) {
+                console.error('Error fetching robot state:', error);
+            }
+        }
+
+        async function fetchActionTrajectory() {
+            try {
+                const response = await fetch('/api/action_trajectory');
+                const data = await response.json();
+                updateTrajectoryVisualization(data.trajectory);
+                updateTrajectoryInfo(data.trajectory);
+            } catch (error) {
+                console.error('Error fetching trajectory:', error);
+            }
+        }
+
+        async function fetchConfig() {
+            try {
+                const response = await fetch('/api/robot_config');
+                config = await response.json();
+            } catch (error) {
+                console.error('Error fetching config:', error);
+            }
+        }
+
+        // ========== Controls ==========
+        function toggleTrajectory() {
+            showTrajectory = !showTrajectory;
+            trajectoryGroup.visible = showTrajectory;
+            document.getElementById('trajectory-info').textContent =
+                showTrajectory ? 'Trajectory visible' : 'Trajectory hidden';
+        }
+
+        function toggleJointAxes() {
+            showJointAxes = !showJointAxes;
+            // Force re-render to show/hide axes
+            // The updateRobotVisualization function will check showJointAxes flag
+            // and conditionally render the indicators
+            console.log(`Joint axes ${showJointAxes ? 'shown' : 'hidden'}`);
+        }
+
+        function toggle3DModel() {
+            use3DModel = !use3DModel;
+            // If switching to 3D model but meshes aren't loaded, fall back
+            if (use3DModel && !meshesLoaded) {
+                console.warn('⚠️  3D models not loaded, using primitive shapes');
+                use3DModel = false;
+            }
+            console.log(`🔄 Toggled to: ${use3DModel ? '3D MODELS' : 'PRIMITIVE SHAPES'}`);
+            console.log(`   Meshes loaded: ${meshesLoaded}, Cache size: ${Object.keys(meshCache).length}`);
+
+            // Force immediate re-render to show toggle effect
+            if (window.lastRobotState) {
+                console.log('   🔄 Forcing re-render...');
+                updateRobotVisualization(window.lastRobotState);
+            }
+        }
+
+        function resetView() {
+            camera.position.set(0.8, 0.8, 0.8);
+            camera.lookAt(0, 0, 0.2);
+            controls.target.set(0, 0, 0.2);
+            controls.update();
+        }
+
+        // Joint testing state
+        let testingJoint = null;
+        let testAnimation = null;
+        let mainUpdateInterval = null;
+
+        // Make testJoint globally accessible for onclick handlers
+        window.testJoint = async function(jointIndex, jointName) {
+            // If already testing, stop it first
+            if (testingJoint !== null) {
+                console.log(`⏹️  Stopping test of joint ${testingJoint}`);
+                if (testAnimation) {
+                    clearInterval(testAnimation);
+                    testAnimation = null;
+                }
+                const prevElement = document.getElementById(`joint-name-${testingJoint}`);
+                if (prevElement) prevElement.classList.remove('active');
+                testingJoint = null;
+
+                // Resume main update loop
+                if (mainUpdateInterval) {
+                    console.log('▶️  Resuming main update loop');
+                }
+                return;
+            }
+
+            console.log(`🧪 Testing joint ${jointIndex}: ${jointName}`);
+            testingJoint = jointIndex;
+
+            // Highlight the active joint
+            const element = document.getElementById(`joint-name-${jointIndex}`);
+            if (element) element.classList.add('active');
+
+            // Pause main update loop during testing
+            console.log('⏸️  Pausing main update loop for testing');
+
+            // Joint range: ±90 degrees (±π/2 radians)
+            const maxAngle = Math.PI / 2;
+            const minAngle = -Math.PI / 2;
+            const steps = 80;  // Total steps for full motion
+            const delayMs = 30;  // 30ms = ~33 Hz update rate
+
+            let step = 0;
+            const homeAngles = Array(6).fill(0);
+
+            testAnimation = setInterval(() => {
+                if (step >= steps) {
+                    // Test complete - return to home
+                    if (element) element.classList.remove('active');
+                    clearInterval(testAnimation);
+                    testAnimation = null;
+                    testingJoint = null;
+                    console.log(`✅ Completed testing joint ${jointIndex}`);
+                    console.log('▶️  Resuming main update loop');
+                    return;
+                }
+
+                // Calculate current angle (sweep from min to max and back)
+                let angle;
+                if (step < steps / 2) {
+                    // First half: min → max
+                    const t = step / (steps / 2);
+                    angle = minAngle + t * (maxAngle - minAngle);
+                } else {
+                    // Second half: max → min
+                    const t = (step - steps / 2) / (steps / 2);
+                    angle = maxAngle - t * (maxAngle - minAngle);
+                }
+
+                // Set joint angle for testing
+                const testAngles = [...homeAngles];
+                testAngles[jointIndex] = angle;
+
+                // Send test angles as query params to get FK computed
+                const angleParams = testAngles.map((a, i) => `j${i}=${a.toFixed(4)}`).join('&');
+                fetch(`/api/robot_state?${angleParams}`)
+                    .then(res => res.json())
+                    .then(testState => {
+                        updateRobotVisualization(testState);
+                    })
+                    .catch(err => console.error('Error fetching FK for test:', err));
+
+                step++;
+            }, delayMs);
+        };
+
+        // ========== Main Loop ==========
+        async function init() {
+            console.log('Initializing visualization...');
+
+            // Verify Three.js loaded
+            if (typeof THREE === 'undefined') {
+                console.error('❌ THREE.js failed to load!');
+                document.getElementById('status').innerHTML = '❌ Error: THREE.js library failed to load. Please refresh.';
+                document.getElementById('status').style.background = 'rgba(255, 0, 0, 0.3)';
+                return;
+            }
+            console.log('✓ THREE.js loaded:', THREE.REVISION);
+
+            initThreeJS();
+            console.log('Three.js initialized');
+
+            // Load STL meshes (will fallback to primitives if loading fails)
+            console.log('Loading STL meshes...');
+            await loadSTLMeshes();
+            console.log(`Meshes loaded: ${meshesLoaded}, count: ${Object.keys(meshCache).length}`);
+
+            await fetchConfig();
+            console.log('Config loaded');
+
+            // Initial fetch
+            await fetchRobotState();
+
+            // Poll for updates at 20 Hz
+            console.log('Starting polling loop (20 Hz)...');
+            mainUpdateInterval = setInterval(async () => {
+                // Skip updates if testing a joint
+                if (testingJoint !== null) {
+                    console.log('⏸️ Skipping update - testing joint', testingJoint);
+                    return;
+                }
+                await fetchRobotState();
+                await fetchActionTrajectory();
+            }, 50);
+        }
+
+        // Keyboard controls for joint testing
+        window.addEventListener('keydown', (event) => {
+            // Test joints using keys 1-6
+            if (event.key >= '1' && event.key <= '6') {
+                const jointIndex = parseInt(event.key) - 1;
+                const jointNames = [
+                    'shoulder_pan', 'shoulder_lift', 'elbow_flex',
+                    'wrist_flex', 'wrist_roll', 'gripper'
+                ];
+                console.log(`🎹 Keyboard: Testing joint ${jointIndex} (${jointNames[jointIndex]})`);
+                window.testJoint(jointIndex, jointNames[jointIndex]);
+            }
+        });
+
+        // Start when page loads
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
