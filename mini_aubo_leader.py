@@ -13,6 +13,10 @@ from math import pi
 import argparse # Import argparse for command-line argument parsing
 import sys # Import sys for system-specific parameters and functions
 from serial.tools import list_ports
+import serial
+import threading
+
+leader_home_values = []
 
 # 创建一个logger
 #logger = logging.getLogger()
@@ -2899,6 +2903,75 @@ def test_process_demo(real_connection):
             Auboi5Robot.uninitialize()
         print("run end-------------------------")
 
+def calculate_checksum(data):
+    return (~sum(data)) & 0xFF
+
+def read_motor_position(ser, motor_id):
+    try:
+        # Feetech read position: Address 0x38 (56), Length 2
+        packet = [0xFF, 0xFF, motor_id, 0x04, 0x02, 0x38, 0x02]
+        checksum = calculate_checksum(packet[2:])
+        packet.append(checksum)
+
+        ser.reset_input_buffer()
+        ser.write(bytes(packet))
+        time.sleep(0.005) 
+
+        if ser.in_waiting > 0:
+            response = ser.read(ser.in_waiting)
+            if len(response) >= 7:
+                # Response: FF FF ID Len Err P_L P_H Sum
+                pos_low = response[5]
+                pos_high = response[6]
+                return (pos_high << 8) | pos_low
+    except Exception:
+        pass
+    return 0
+
+def calibrate_leader(port_name):
+    global leader_home_values
+    
+    # Skip if no port provided (e.g. fake mode with no ports)
+    if not port_name:
+        return
+
+    print(f"Connecting to leader arm on {port_name}...")
+    try:
+        ser = serial.Serial(port_name, baudrate=1000000, timeout=0.1)
+    except Exception as e:
+        print(f"Error opening serial port: {e}")
+        return
+
+    running = True
+    current_positions = [0] * 5
+
+    def update_positions():
+        nonlocal current_positions
+        while running:
+            positions = []
+            for i in range(1, 6):
+                pos = read_motor_position(ser, i)
+                positions.append(pos)
+            current_positions = positions
+            # Overwrite the line
+            sys.stdout.write(f"\rCurrent joint positions: {positions}   ")
+            sys.stdout.flush()
+            time.sleep(0.1)
+
+    print("Put the leader arm into home position and press ENTER")
+    t = threading.Thread(target=update_positions)
+    t.start()
+
+    input() # Wait for ENTER
+    
+    running = False
+    t.join()
+    
+    leader_home_values = current_positions
+    print(f"\nLeader home values saved: {leader_home_values}")
+    ser.close()
+    return leader_home_values
+
 def choose_com_port(dev_port):
     """
     Scans for available serial ports and allows the user to select one.
@@ -2965,6 +3038,8 @@ if __name__ == '__main__':
 
     com_port = choose_com_port(args.dev)
     logger.info(f"Using COM port: {com_port}")
+
+    calibrate_leader(com_port)
 
     test_process_demo(real_connection)
     logger.info("test completed")
