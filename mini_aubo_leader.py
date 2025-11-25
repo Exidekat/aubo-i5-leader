@@ -16,6 +16,7 @@ from serial.tools import list_ports
 import serial
 import threading
 
+CONVERSION_FACTOR = 2 * pi / 4096
 leader_home_values = []
 
 # 创建一个logger
@@ -2783,7 +2784,7 @@ def runWaypoint(queue):
         print(queue.get(True))
 
 
-def test_process_demo(real_connection):
+def test_process_demo(real_connection, com_port=None):
     # 初始化logger
     logger_init()
 
@@ -2791,6 +2792,13 @@ def test_process_demo(real_connection):
     logger.info("{0} test beginning...".format(Auboi5Robot.get_local_time()))
 
     robot = None
+    ser = None
+    if com_port:
+        try:
+            ser = serial.Serial(com_port, baudrate=1000000, timeout=0.1)
+            logger.info(f"Connected to leader arm on {com_port}")
+        except Exception as e:
+            logger.error(f"Failed to connect to leader arm: {e}")
 
     try:
         if real_connection:
@@ -2841,23 +2849,28 @@ def test_process_demo(real_connection):
                 robot.set_joint_maxvelc(joint_maxvelc)
                 robot.set_arrival_ahead_blend(0.05)
                 while True:
-                    time.sleep(1)
+                    if ser:
+                        joint_radian = calculate_aubo_angles_from_leader(ser)
+                        robot.move_joint(joint_radian, True)
+                        time.sleep(0.01)
+                    else:
+                        time.sleep(1)
 
-                    joint_radian = (0.541678, 0.225068, -0.948709, 0.397018, -1.570800, 0.541673)
-                    robot.move_joint(joint_radian, True)
-                    
+                        joint_radian = (0.541678, 0.225068, -0.948709, 0.397018, -1.570800, 0.541673)
+                        robot.move_joint(joint_radian, True)
+                        
 
-                    joint_radian = (55.5/180.0*pi, -20.5/180.0*pi, -72.5/180.0*pi, 38.5/180.0*pi, -90.5/180.0*pi, 55.5/180.0*pi)
-                    robot.move_joint(joint_radian, True)
+                        joint_radian = (55.5/180.0*pi, -20.5/180.0*pi, -72.5/180.0*pi, 38.5/180.0*pi, -90.5/180.0*pi, 55.5/180.0*pi)
+                        robot.move_joint(joint_radian, True)
 
-                    joint_radian = (0, 0, 0, 0, 0, 0)
-                    robot.move_joint(joint_radian, True)
+                        joint_radian = (0, 0, 0, 0, 0, 0)
+                        robot.move_joint(joint_radian, True)
 
                     print("-----------------------------")
 
                     queue.put(joint_radian)
 
-                    robot.project_stop()
+                    # robot.project_stop()
 
                     # time.sleep(5)
 
@@ -2871,18 +2884,23 @@ def test_process_demo(real_connection):
         else:
             logger.info("Running in fake mode. No connection to Aubo i5.")
             while True:
-                time.sleep(1)
-                logger.info("Fake mode: Simulating joint angle commands.")
-                # Simulate joint angle commands in fake mode
-                joint_radian_fake_1 = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6)
-                joint_radian_fake_2 = (0.7, 0.8, 0.9, 1.0, 1.1, 1.2)
-                joint_radian_fake_3 = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-                logger.info(f"Fake mode: Sent joint angles: {joint_radian_fake_1}")
-                time.sleep(1)
-                logger.info(f"Fake mode: Sent joint angles: {joint_radian_fake_2}")
-                time.sleep(1)
-                logger.info(f"Fake mode: Sent joint angles: {joint_radian_fake_3}")
-                time.sleep(1)
+                if ser:
+                    joint_radian = calculate_aubo_angles_from_leader(ser)
+                    logger.info(f"Fake mode: Leader angles: {joint_radian}")
+                    time.sleep(0.1)
+                else:
+                    time.sleep(1)
+                    logger.info("Fake mode: Simulating joint angle commands.")
+                    # Simulate joint angle commands in fake mode
+                    joint_radian_fake_1 = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6)
+                    joint_radian_fake_2 = (0.7, 0.8, 0.9, 1.0, 1.1, 1.2)
+                    joint_radian_fake_3 = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+                    logger.info(f"Fake mode: Sent joint angles: {joint_radian_fake_1}")
+                    time.sleep(1)
+                    logger.info(f"Fake mode: Sent joint angles: {joint_radian_fake_2}")
+                    time.sleep(1)
+                    logger.info(f"Fake mode: Sent joint angles: {joint_radian_fake_3}")
+                    time.sleep(1)
 
     except KeyboardInterrupt:
         if robot and real_connection:
@@ -2928,6 +2946,13 @@ def read_motor_position(ser, motor_id):
         pass
     return 0
 
+def get_all_servo_positions(ser):
+    positions = []
+    for i in range(1, 6):
+        pos = read_motor_position(ser, i)
+        positions.append(pos)
+    return positions
+
 def calibrate_leader(port_name):
     global leader_home_values
     
@@ -2948,13 +2973,9 @@ def calibrate_leader(port_name):
     def update_positions():
         nonlocal current_positions
         while running:
-            positions = []
-            for i in range(1, 6):
-                pos = read_motor_position(ser, i)
-                positions.append(pos)
-            current_positions = positions
+            current_positions = get_all_servo_positions(ser)
             # Overwrite the line
-            sys.stdout.write(f"\rCurrent joint positions: {positions}   ")
+            sys.stdout.write(f"\rCurrent joint positions: {current_positions}   ")
             sys.stdout.flush()
             time.sleep(0.1)
 
@@ -2971,6 +2992,25 @@ def calibrate_leader(port_name):
     print(f"\nLeader home values saved: {leader_home_values}")
     ser.close()
     return leader_home_values
+
+def calculate_aubo_angles_from_leader(ser):
+    current_vals = get_all_servo_positions(ser)
+    if len(leader_home_values) != 5:
+        # If not calibrated, return 0s
+        return (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        
+    angles = []
+    for i in range(5):
+        # Calculate difference from home
+        raw_diff = current_vals[i] - leader_home_values[i]
+        # Convert to radians
+        rad = raw_diff * CONVERSION_FACTOR
+        angles.append(rad)
+    
+    # Pad with 0.0 for the 6th joint (Aubo has 6, leader has 5)
+    angles.append(0.0)
+    
+    return tuple(angles)
 
 def choose_com_port(dev_port):
     """
@@ -3041,7 +3081,7 @@ if __name__ == '__main__':
 
     calibrate_leader(com_port)
 
-    test_process_demo(real_connection)
+    test_process_demo(real_connection, com_port)
     logger.info("test completed")
 
     # Argument parsing
