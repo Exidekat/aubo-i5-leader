@@ -1,0 +1,3 @@
+[submodule "submodules/aubo_python_sdk"]
+	path = submodules/aubo_python_sdk
+	url = https://github.com/ipc-robot/aubo_python_sdk.git
