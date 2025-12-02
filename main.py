@@ -3037,7 +3037,7 @@ def choose_com_port(dev_port):
     elif len(ports) == 1:
         return ports[0].device
     else:
-        print("Available serial ports:")
+        print("Available serial ports for Leader Arm:")
         for i, port in enumerate(ports):
             print(f"  {i}: {port.device} - {port.description}")
         while True:
@@ -3107,23 +3107,3 @@ if __name__ == '__main__':
                 break
             else:
                 print("Invalid input. Please enter 'y' or 'n'.")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
