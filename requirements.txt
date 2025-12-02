@@ -1,13 +1,6 @@
-# Phase 1: SO-100 Leader FK & Visualization
+# Required packages
 numpy>=1.24.0
-flask>=2.3.0
-flask-cors>=4.0.0
 pyserial>=3.5
 
-# Future phases
-# Phase 2: AUBO i5 Control
-# pyaubo-sdk
-
-# Optional: For development
-# ipython
-# jupyter
+# For hardware deployment, install pyaubo-sdk from
+# https://github.com/ipc-robot/aubo_python_sdk/tree/main/dependants

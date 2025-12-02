@@ -14,15 +14,15 @@ A leader-follower robot control system that reads joint angles from a Mini AUBO 
 ## Installation
 
 ### Requirements
-- Python 3.11+
-- Conda environment: `ltx` (or equivalent)
+- Python 3.7+
+- Conda environment: `aubo` (or equivalent)
 - AUBO i5 robot controller software running on localhost or network
 
 ### Setup
 
 ```bash
-# Activate the ltx conda environment
-conda activate ltx
+# Activate the aubo conda environment
+conda activate aubo
 
 # Install dependencies
 pip install -r requirements.txt
@@ -225,7 +225,7 @@ python main.py --real --dev /dev/ttyACM0
 pip install libpyauboi5
 
 # Or check conda environment
-conda activate ltx
+conda activate aubo
 pip install libpyauboi5
 ```
 
