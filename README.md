@@ -1,56 +1,22 @@
-# AUBO i5 Leader to AUBO i5 Follower Robot Control System
+# AUBO i5 Leader-Follower Control System
 
-A complete leader-follower robot control system that reads joint angles from an AUBO i5 leader arm via Feetech servos, computes forward kinematics, and mirrors the end effector pose to control a full AUBO i5 follower arm.
-
-## Project Structure
-
-```
-aubo-i5-leader/
-├── mini_aubo_leader.py          # Main: AUBO i5 leader arm control via Feetech servos
-├── aubo_i5_kinematics.py        # AUBO i5 forward kinematics
-├── aubo_i5_ik.py                # AUBO i5 inverse kinematics
-├── workspace_translation.py     # Workspace scaling/translation utilities
-├── dual_viz_server.py           # Dual-arm 3D visualization server
-├── leader_follower.py           # Original integration code (legacy)
-├── so100_leader_fk.py           # Legacy SO-100 code (not used)
-├── requirements.txt             # Python dependencies
-├── external/                    # Standalone modules
-│   ├── forward_kinematics.py    # Base FK classes
-│   ├── viz_server.py            # Flask 3D visualization
-│   ├── templates/               # HTML templates
-│   └── static/                  # 3D models and JS libraries
-└── README.md                    # This file
-```
+A leader-follower robot control system that reads joint angles from a Mini AUBO i5 leader arm (built with Feetech servos) and mirrors them directly to control a real AUBO i5 follower arm.
 
 ## Features
 
-### AUBO i5 Leader Arm (Feetech Servos)
-- ✅ Direct serial communication via Feetech protocol
-- ✅ Real-time joint angle reading (6 DOF)
-- ✅ Automatic servo ID detection and homing
-- ✅ Conversion from Feetech angles to AUBO joint angles
-- ✅ Multi-threaded state loop for continuous monitoring
-- ✅ Hardware safety with homing sequence
-
-### AUBO i5 Kinematics
-- ✅ Complete 6-DOF forward kinematics from URDF parameters
-- ✅ Numerical inverse kinematics (Damped Least Squares)
-- ✅ Joint limit checking and enforcement (±175°)
-- ✅ Position-only and full-pose IK solving
-- ✅ High convergence rate (100% in testing)
-
-### Leader-Follower Control
-- ✅ Real-time leader-follower control loop
-- ✅ 1:1 pose mirroring between leader and follower
-- ✅ Dual-arm 3D visualization (Flask + Three.js)
-- ✅ Hardware control via pyaubo-sdk
-- ✅ Configurable control loop frequency
+- Direct 1:1 joint angle mapping from Mini AUBO leader to AUBO i5 follower
+- Real-time control via Feetech serial protocol (leader) and libpyauboi5 SDK (follower)
+- Automatic leader arm calibration with home position capture
+- Fake mode for testing without real hardware
+- Configurable serial port selection
+- Real-time control loop with safety limits
 
 ## Installation
 
 ### Requirements
-- Python 3.11 (as per user's conda environment)
-- Conda environment: `ltx`
+- Python 3.11+
+- Conda environment: `ltx` (or equivalent)
+- AUBO i5 robot controller software running on localhost or network
 
 ### Setup
 
@@ -61,239 +27,245 @@ conda activate ltx
 # Install dependencies
 pip install -r requirements.txt
 
-# Dependencies installed:
-# - numpy>=1.24.0
-# - flask>=2.3.0
-# - flask-cors>=4.0.0
-# - pyserial>=3.5
+# Key dependencies:
+# - pyserial>=3.5          # Feetech servo communication
+# - libpyauboi5            # AUBO i5 robot control SDK
 ```
 
 ## Usage
 
-### 1. Run AUBO i5 Leader-Follower System
+### Running the Leader-Follower System
+
+The main script supports both real hardware and fake mode for testing.
+
+#### Real Mode (with Hardware)
 
 ```bash
-# Main control program with visualization
-python mini_aubo_leader.py --follower-ip <AUBO_IP>
+# Run with real AUBO i5 connection
+python main.py --real
 
-# The program will:
-# 1. Auto-detect Feetech servo USB port
-# 2. Home all 6 servos
-# 3. Start reading leader arm joint angles
-# 4. Mirror poses to follower AUBO i5
-# 5. Launch dual-arm visualization at http://localhost:5000
+# Or specify serial port explicitly
+python main.py --real --dev /dev/ttyACM0
 ```
 
-### 2. Test AUBO i5 Kinematics
+The script will:
+1. Auto-detect or use specified Feetech servo serial port
+2. Calibrate the leader arm by saving home positions for all 6 motors
+3. Connect to AUBO i5 robot controller (localhost:8899 by default)
+4. Read leader joint angles continuously
+5. Convert Feetech positions to AUBO joint angles
+6. Send commands to follower robot in real-time
+
+#### Fake Mode (Testing without Hardware)
 
 ```bash
-# Test forward kinematics
-python aubo_i5_kinematics.py
+# Run in fake mode (no robot connection)
+python main.py --fake
 
-# Test inverse kinematics
-python aubo_i5_ik.py
+# Or with specific serial port for leader only
+python main.py --fake --dev /dev/ttyACM0
 ```
 
-### 3. Test Visualization Only
+In fake mode:
+- Leader angles are read and displayed (if connected)
+- No commands are sent to the AUBO i5
+- Useful for testing leader arm calibration and angle conversion
+
+#### Interactive Mode
 
 ```bash
-# Launch dual-arm visualization server
-python dual_viz_server.py
+# Run without flags - will prompt you
+python main.py
+
+# You'll be asked:
+# "Start a real connection to the Aubo i5? (y/n):"
 ```
 
-## Robot Specifications
+### Command-Line Arguments
 
-### AUBO i5 Leader Arm (Feetech Servo Version)
-- **DOF:** 6 revolute joints
-- **Servos:** Feetech smart servos (serial communication)
-- **Angle Range:** 0-4096 counts per revolution
-- **Communication:** Direct serial via USB adapter
-- **Homing:** Required on startup for calibration
-- **Joint Mapping:** 1:1 correspondence with AUBO i5 joints
+- `--real`: Connect to real AUBO i5 robot
+- `--fake`: Run in fake mode (no robot connection)
+- `--dev <port>`: Specify serial port (e.g., `/dev/ttyACM0`, `COM3`)
+
+### Configuration
+
+The script uses these default settings:
+- **AUBO i5 IP**: `localhost` (modify in code if using network connection)
+- **AUBO i5 Port**: `8899` (default controller port)
+- **Feetech Baud Rate**: `1000000` (1 Mbps)
+- **Control Rate**: ~100 Hz (10ms loop delay)
+- **Conversion Factor**: `2*pi / 4096` (Feetech counts to radians)
+
+## Hardware Specifications
+
+### Mini AUBO i5 Leader Arm (Feetech Servos)
+- **DOF**: 6 revolute joints
+- **Servos**: Feetech STS3215 smart servos
+- **Position Resolution**: 4096 counts per revolution (14-bit)
+- **Communication**: Serial protocol via USB (1 Mbps baud)
+- **Joint Mapping**: Motors 1-6 correspond directly to AUBO joints 1-6
+- **Calibration**: Home position saved on startup
 
 ### AUBO i5 Follower Arm
-- **DOF:** 6 revolute joints
-- **Payload:** 5 kg
-- **Max Reach:** 886.5 mm
-- **Repeatability:** ±0.05 mm
-- **Joint Limits:** ±175° (±3.054 rad) all joints
-- **Link Lengths:**
-  - Shoulder height: 122 mm
-  - Upper arm: 408 mm
-  - Forearm: 376 mm
-  - Wrist offsets: 102.5 mm, 94 mm
-- **Control:** pyaubo-sdk via network connection
+- **DOF**: 6 revolute joints
+- **Payload**: 5 kg
+- **Max Reach**: 886.5 mm
+- **Repeatability**: +/-0.05 mm
+- **Joint Limits**: +/-175 degrees (all joints)
+- **Control Interface**: libpyauboi5 SDK via TCP/IP (port 8899)
 
 ## Control Architecture
 
-### Leader-Follower Pipeline
-1. **Read Leader Angles:** Feetech servo positions via serial (6 joints)
-2. **Convert Angles:** Feetech counts (0-4096) → AUBO radians (±π)
-3. **Compute Leader FK:** AUBO i5 forward kinematics for leader pose
-4. **Mirror Pose:** 1:1 mapping (no scaling needed, same workspace)
-5. **Solve Follower IK:** Target pose → follower joint angles
-6. **Send to Follower:** Joint commands via pyaubo-sdk
-7. **Visualize:** Update dual-arm 3D visualization
+### Delta-Based Control Loop
 
-### Performance
-- **Update Rate:** ~10 Hz (configurable)
-- **IK Convergence:** 100% success rate in testing
-- **Position Error:** <1mm after convergence
-- **Latency:** ~100ms end-to-end
+The system uses a simple delta-based approach for direct joint angle mapping:
 
-## System Architecture
-
-### Forward Kinematics (FK)
-Both robots use URDF-based forward kinematics:
-- Origin transforms (xyz + rpy)
-- Rodrigues' formula for axis-angle rotations
-- Homogeneous transformation matrices (4x4)
-- Global rotation compensation
-
-### Inverse Kinematics (IK)
-AUBO i5 uses numerical IK solver:
-- **Method:** Damped Least Squares (Levenberg-Marquardt)
-- **Jacobian:** Numerical differentiation
-- **Update:** `Δq = J^T(JJ^T + λ²I)^(-1) * e`
-- **Constraints:** Joint limits enforced at each iteration
-- **Options:** Position-only or full-pose solving
-
-### Leader-Follower Control Loop
 ```python
 while True:
-    # 1. Read leader joint angles (Feetech servos)
-    leader_counts = read_feetech_positions()  # Serial read
+    # 1. Read current leader positions (Feetech serial)
+    leader_current_counts = read_all_motor_positions()  # Raw 0-4096
 
-    # 2. Convert to AUBO angles
-    leader_joints = convert_feetech_to_aubo(leader_counts)
+    # 2. Calculate delta from home position
+    leader_delta_counts = leader_current_counts - leader_home_counts
 
-    # 3. Compute leader end effector pose
-    leader_pos, leader_rot = aubo_fk.compute_end_effector_pose(leader_joints)
+    # 3. Convert delta to radians
+    leader_delta_rad = leader_delta_counts * (2*pi / 4096)
 
-    # 4. Solve follower inverse kinematics (1:1 mirror)
-    follower_joints, converged, info = aubo_ik.solve(leader_pos, leader_rot)
+    # 4. Apply delta to follower (1:1 mapping)
+    follower_target = leader_delta_rad  # Direct mapping
 
-    # 5. Send to follower
-    aubo_robot.move_to_joints(follower_joints)  # pyaubo-sdk
+    # 5. Send to AUBO i5 follower
+    robot.move_joint(follower_target, blocking=True)
 
-    # 6. Update visualization
-    viz_server.update_dual_arms(leader_joints, follower_joints)
+    time.sleep(0.01)  # ~100 Hz control loop
 ```
 
-## Testing & Validation
+### Key Functions
 
-### Hardware Tests
-- ✅ Feetech servo communication
-- ✅ Automatic servo ID detection
-- ✅ Homing sequence for all 6 joints
-- ✅ Angle conversion accuracy
-- ✅ AUBO follower connection via pyaubo-sdk
+**`calibrate_leader(port_name)`**
+- Reads and saves home position for all 6 Feetech motors
+- Stores raw counts (0-4096) in global `leader_home_values` array
+- Called once on startup
 
-### Kinematics Tests
-- ✅ Forward kinematics validation
-- ✅ Inverse kinematics convergence (100%)
-- ✅ Round-trip test (FK → IK → FK)
-- ✅ Position error: <0.05 mm
-- ✅ Joint limit enforcement
+**`calculate_aubo_angles_from_leader(ser)`**
+- Reads current positions from all 6 motors
+- Calculates delta: `current - home`
+- Converts to radians: `delta * CONVERSION_FACTOR`
+- Returns 6-element tuple of joint angles
 
-### Leader-Follower Integration
-- ✅ Real-time control loop (10 Hz)
-- ✅ 1:1 pose mirroring accuracy
-- ✅ Dual-arm visualization
-- ✅ Multi-threaded state monitoring
-- ✅ Hardware safety with homing
+**`read_motor_position(ser, motor_id)`**
+- Sends Feetech read command to specific motor
+- Address: 0x38 (position register)
+- Returns 14-bit position value (0-4095)
 
-## Future Enhancements
+**`test_process_demo(real_connection, com_port)`**
+- Main control loop
+- Connects to AUBO i5 if `real_connection=True`
+- Reads leader angles and sends to follower continuously
+- Handles Ctrl+C graceful shutdown
 
-### Performance Optimization
-- [ ] Analytical IK solution (if possible for AUBO i5)
-- [ ] Optimize Jacobian computation
-- [ ] Reduce end-to-end latency below 100ms
-- [ ] Implement predictive control for smoother motion
+## System Workflow
 
-### Advanced Features
-- [ ] Collision detection between leader and follower
-- [ ] Trajectory smoothing and interpolation
-- [ ] Velocity and acceleration limiting
-- [ ] Force/torque feedback integration
-- [ ] Compliance control modes
+### Startup Sequence
+1. Script starts and prompts for mode (`--real` or `--fake`)
+2. Auto-detects or uses specified serial port for leader arm
+3. **Calibration Phase**: Reads all 6 motor positions and saves as home
+4. Connects to AUBO i5 controller (real mode only)
+5. Enters main control loop
 
-### Safety & Reliability
-- [ ] Emergency stop button integration
-- [ ] Workspace boundary enforcement
-- [ ] Singularity detection and avoidance
-- [ ] Automatic reconnection on network loss
-- [ ] Enhanced error handling and recovery
+### Control Loop (Real Mode)
+1. Read current leader motor positions
+2. Calculate delta from calibrated home
+3. Convert delta to radians
+4. Send joint command to AUBO i5
+5. Repeat at ~100 Hz
+
+### Control Loop (Fake Mode)
+1. Read current leader motor positions
+2. Calculate and display angles
+3. No commands sent to follower
+4. Useful for testing leader arm setup
 
 ## Troubleshooting
 
-### Feetech Servo Connection Issues
+### Leader Arm Connection Issues
+
+**Problem**: Cannot find Feetech serial port
 ```bash
-# Auto-detect serial port (built into mini_aubo_leader.py)
-# Or manually check:
+# List available ports
 ls /dev/ttyACM* /dev/ttyUSB*
 
 # Check permissions
 sudo chmod 666 /dev/ttyACM0
 
-# Test servo communication
-python mini_aubo_leader.py --test-servos
+# Specify port manually
+python main.py --real --dev /dev/ttyACM0
 ```
 
-### AUBO i5 Follower Connection Issues
+**Problem**: Calibration fails or returns invalid values
+- Ensure all 6 servos are powered
+- Check that servo IDs are 1-6
+- Verify baud rate is 1000000 (1 Mbps)
+- Try repowering the servos
+
+### AUBO i5 Connection Issues
+
+**Problem**: Cannot connect to AUBO controller
 ```bash
-# Test network connection
-ping <AUBO_IP>
+# Check if controller software is running
+# Default: localhost:8899
 
-# Verify pyaubo-sdk installation
-python -c "import libpyauboi5; print('SDK OK')"
-
-# Check if robot is in the correct mode
-# (Refer to AUBO i5 manual for network setup)
+# If using network connection, modify IP in code:
+# Line ~2835: ip = '192.168.65.131'  # Change this
 ```
 
-### IK Convergence Issues
-- Increase `max_iterations` (default: 100)
-- Adjust `damping` factor (default: 0.1)
-- Use `position_only` IK for better convergence
-- Check if target is within workspace limits
-- Verify leader arm is properly homed
+**Problem**: `libpyauboi5 module not found`
+```bash
+# Install AUBO SDK
+pip install libpyauboi5
 
-### Homing Issues
-- Ensure all servos are powered and connected
-- Check that servo IDs are sequential (1-6)
-- Verify Feetech protocol compatibility
-- Re-run homing sequence if angles seem incorrect
+# Or check conda environment
+conda activate ltx
+pip install libpyauboi5
+```
+
+### Runtime Issues
+
+**Problem**: Robot moves erratically
+- Ensure proper calibration (leader arm in neutral pose at start)
+- Check that all 6 motors are reading correctly
+- Verify joint angle conversions are correct
+
+**Problem**: Script freezes or crashes
+- Press Ctrl+C for graceful shutdown
+- Check log files in `./logfiles/robot-ctl-python.log`
+- Restart AUBO controller if needed
+
+## Safety Considerations
+
+- Always start with both arms in neutral/home position for calibration
+- Keep emergency stop accessible during operation
+- Test in fake mode first before enabling real robot connection
+- Be aware of joint limits (+/-175 degrees)
+- Monitor for unexpected movements during initial testing
+- The control loop runs at ~100 Hz - movements can be fast
+
+## Logs
+
+Log files are stored in `./logfiles/robot-ctl-python.log` with:
+- Timestamped events
+- Connection status
+- Joint angle commands
+- Error messages
+
+Log rotation is automatic (50 MB per file, 30 backups).
 
 ## References
 
-### AUBO i5
-- URDF: https://github.com/avinashsen707/AUBOi5-D435-ROS-DOPE
-- Specifications: Max reach 886.5mm, 6-DOF, ±175° joints
-- DH Parameters: Modified DH convention
-- SDK: pyaubo-sdk (libpyauboi5)
-
-### Feetech Servos
-- Serial Protocol: Feetech smart servo communication protocol
-- Angle Encoding: 4096 counts per revolution
-- Control: Direct serial communication via USB
-
-### Kinematics Resources
-- Denavit-Hartenberg Parameters
-- Rodrigues' Formula for Rotations
-- Damped Least Squares IK Method
-- URDF Specification
-
-## License
-
-This project integrates components from various open-source robotics libraries (see `external/` directory).
-
-## Contact
-
-For questions about this leader-follower system, refer to the code documentation and comments throughout the Python files.
+- **AUBO i5 SDK**: libpyauboi5 (official AUBO Robotics SDK)
+- **Feetech Protocol**: STS series smart servo documentation
+- **Serial Communication**: pyserial library
 
 ---
 
-**Status:** ✅ AUBO i5 Leader-Follower System Complete
-**Hardware:** Leader (Feetech servos) + Follower (AUBO i5 via pyaubo-sdk)
-**Visualization:** Dual-arm 3D web viewer at http://localhost:5000
+**Project Status**: Active development for Mini AUBO i5 leader-follower control
