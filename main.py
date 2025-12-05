@@ -18,23 +18,26 @@ import threading
 
 # ========== GLOBAL CONFIGURATION CONSTANTS ==========
 
-# Motor ID mapping: Aubo motor (1-5) -> Feetech motor ID
+# Motor ID mapping: Aubo joint (1-6) -> Feetech motor ID
+# Joints 1-5 are arm joints, Joint 6 is the end-effector gripper
 MOTOR_ID_MAP = {
-    1: 2,
-    2: 3,
-    3: 4,
-    4: 5,
-    5: 6
+    1: 1,
+    2: 2,
+    3: 3,
+    4: 4,
+    5: 5,
+    6: 6  # End-effector gripper
 }
 
-# Conversion factors: Aubo motor (1-5) -> Feetech encoder value to radians
+# Conversion factors: Aubo joint (1-6) -> Feetech encoder value to radians
 # Default conversion is (2 * pi / 4096), but each joint can have a custom value
 MOTOR_CONVERSION_FACTORS = {
     1: 2 * pi / 4096,
     2: 2 * pi / 4096,
     3: 2 * pi / 4096,
     4: 2 * pi / 4096,
-    5: 2 * pi / 4096
+    5: 2 * pi / 4096,
+    6: 1 / 4096  # End-effector gripper
 }
 
 # ====================================================
@@ -2971,7 +2974,7 @@ def read_motor_position(ser, motor_id):
 
 def get_all_servo_positions(ser):
     positions = []
-    for aubo_motor_num in range(1, 6):
+    for aubo_motor_num in range(1, 7):  # Now includes motor 6 (gripper)
         feetech_motor_id = MOTOR_ID_MAP[aubo_motor_num]
         pos = read_motor_position(ser, feetech_motor_id)
         positions.append(pos)
@@ -3019,22 +3022,19 @@ def calibrate_leader(port_name):
 
 def calculate_aubo_angles_from_leader(ser):
     current_vals = get_all_servo_positions(ser)
-    if len(leader_home_values) != 5:
+    if len(leader_home_values) != 6:
         # If not calibrated, return 0s
         return (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-        
+
     angles = []
-    for i in range(5):
+    for i in range(6):  # Now includes gripper (motor 6)
         # Calculate difference from home
         raw_diff = current_vals[i] - leader_home_values[i]
         # Convert to radians using joint-specific conversion factor
-        aubo_motor_num = i + 1  # Aubo motors are numbered 1-5
+        aubo_motor_num = i + 1  # Aubo motors are numbered 1-6
         rad = raw_diff * MOTOR_CONVERSION_FACTORS[aubo_motor_num]
         angles.append(rad)
-    
-    # Pad with 0.0 for the 6th joint (Aubo has 6, leader has 5)
-    angles.append(0.0)
-    
+
     return tuple(angles)
 
 def choose_com_port(dev_port):
