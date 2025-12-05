@@ -16,7 +16,30 @@ from serial.tools import list_ports
 import serial
 import threading
 
-CONVERSION_FACTOR = 2 * pi / 4096
+# ========== GLOBAL CONFIGURATION CONSTANTS ==========
+
+# Motor ID mapping: Aubo motor (1-5) -> Feetech motor ID
+MOTOR_ID_MAP = {
+    1: 2,
+    2: 3,
+    3: 4,
+    4: 5,
+    5: 6
+}
+
+# Conversion factors: Aubo motor (1-5) -> Feetech encoder value to radians
+# Default conversion is (2 * pi / 4096), but each joint can have a custom value
+MOTOR_CONVERSION_FACTORS = {
+    1: 2 * pi / 4096,
+    2: 2 * pi / 4096,
+    3: 2 * pi / 4096,
+    4: 2 * pi / 4096,
+    5: 2 * pi / 4096
+}
+
+# ====================================================
+
+CONVERSION_FACTOR = 2 * pi / 4096  # Deprecated: Use MOTOR_CONVERSION_FACTORS instead
 leader_home_values = []
 
 # 创建一个logger
@@ -2948,8 +2971,9 @@ def read_motor_position(ser, motor_id):
 
 def get_all_servo_positions(ser):
     positions = []
-    for i in range(1, 6):
-        pos = read_motor_position(ser, i)
+    for aubo_motor_num in range(1, 6):
+        feetech_motor_id = MOTOR_ID_MAP[aubo_motor_num]
+        pos = read_motor_position(ser, feetech_motor_id)
         positions.append(pos)
     return positions
 
@@ -3003,8 +3027,9 @@ def calculate_aubo_angles_from_leader(ser):
     for i in range(5):
         # Calculate difference from home
         raw_diff = current_vals[i] - leader_home_values[i]
-        # Convert to radians
-        rad = raw_diff * CONVERSION_FACTOR
+        # Convert to radians using joint-specific conversion factor
+        aubo_motor_num = i + 1  # Aubo motors are numbered 1-5
+        rad = raw_diff * MOTOR_CONVERSION_FACTORS[aubo_motor_num]
         angles.append(rad)
     
     # Pad with 0.0 for the 6th joint (Aubo has 6, leader has 5)
