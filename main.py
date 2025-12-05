@@ -2950,6 +2950,66 @@ def test_process_demo(real_connection, com_port=None):
 def calculate_checksum(data):
     return (~sum(data)) & 0xFF
 
+def set_motor_torque_limit(ser, motor_id, torque_value):
+    """
+    Set the torque limit for a Feetech motor.
+
+    Args:
+        ser: Serial connection
+        motor_id: Motor ID (1-6)
+        torque_value: Torque limit value (0-1000, where 1000 is maximum)
+
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        # Clamp torque value to valid range
+        torque_value = max(0, min(1000, int(torque_value)))
+
+        # Feetech write torque limit: Address 0x22 (34), Length 2
+        torque_low = torque_value & 0xFF
+        torque_high = (torque_value >> 8) & 0xFF
+
+        packet = [0xFF, 0xFF, motor_id, 0x05, 0x03, 0x22, torque_low, torque_high]
+        checksum = calculate_checksum(packet[2:])
+        packet.append(checksum)
+
+        ser.reset_input_buffer()
+        ser.write(bytes(packet))
+        time.sleep(0.01)
+
+        # Check for response
+        if ser.in_waiting > 0:
+            response = ser.read(ser.in_waiting)
+            # Response should be: FF FF ID Len Err Sum
+            if len(response) >= 5 and response[4] == 0:  # Error byte should be 0
+                return True
+        return False
+    except Exception as e:
+        print(f"Error setting torque for motor {motor_id}: {e}")
+        return False
+
+def set_all_motor_torques(ser, torque_value):
+    """
+    Set the torque limit for all motors.
+
+    Args:
+        ser: Serial connection
+        torque_value: Torque limit value (0-1000)
+
+    Returns:
+        bool: True if all motors set successfully
+    """
+    success = True
+    for aubo_motor_num in range(1, 7):
+        feetech_motor_id = MOTOR_ID_MAP[aubo_motor_num]
+        if not set_motor_torque_limit(ser, feetech_motor_id, torque_value):
+            print(f"Warning: Failed to set torque for motor {aubo_motor_num} (Feetech ID {feetech_motor_id})")
+            success = False
+        else:
+            print(f"Motor {aubo_motor_num} torque set to {torque_value}")
+    return success
+
 def read_motor_position(ser, motor_id):
     try:
         # Feetech read position: Address 0x38 (56), Length 2
@@ -2959,7 +3019,7 @@ def read_motor_position(ser, motor_id):
 
         ser.reset_input_buffer()
         ser.write(bytes(packet))
-        time.sleep(0.005) 
+        time.sleep(0.005)
 
         if ser.in_waiting > 0:
             response = ser.read(ser.in_waiting)
@@ -2982,7 +3042,7 @@ def get_all_servo_positions(ser):
 
 def calibrate_leader(port_name):
     global leader_home_values
-    
+
     # Skip if no port provided (e.g. fake mode with no ports)
     if not port_name:
         return
@@ -2994,8 +3054,29 @@ def calibrate_leader(port_name):
         print(f"Error opening serial port: {e}")
         return
 
+    # Prompt user for torque value to resist gravity
+    print("\nSetting motor torque limits...")
+    print("Torque value should be 0-1000 (recommended: 300-800 for gravity resistance)")
+    while True:
+        try:
+            torque_input = input("Enter torque limit value (0-1000): ").strip()
+            torque_value = int(torque_input)
+            if 0 <= torque_value <= 1000:
+                break
+            else:
+                print("Please enter a value between 0 and 1000.")
+        except ValueError:
+            print("Invalid input. Please enter a number.")
+
+    # Set torque for all motors
+    print(f"\nSetting torque limit to {torque_value} for all motors...")
+    if set_all_motor_torques(ser, torque_value):
+        print("✓ All motor torques set successfully\n")
+    else:
+        print("⚠ Some motors failed to set torque. Please check connections.\n")
+
     running = True
-    current_positions = [0] * 5
+    current_positions = [0] * 6  # 6 motors including gripper
 
     def update_positions():
         nonlocal current_positions
@@ -3108,27 +3189,3 @@ if __name__ == '__main__':
 
     test_process_demo(real_connection, com_port)
     logger.info("test completed")
-
-    # Argument parsing
-    parser = argparse.ArgumentParser(description='Control the Aubo i5 Robot.')
-    parser.add_argument('--real', action='store_true', help='Connect to the real Aubo i5 robot.')
-    parser.add_argument('--fake', action='store_true', help='Run in fake mode (no real robot connection).')
-    args = parser.parse_args()
-
-    real_connection = False
-    if args.real and not args.fake:
-        real_connection = True
-    elif not args.real and args.fake:
-        real_connection = False
-    else:
-        # Prompt user if arguments are ambiguous or not provided
-        while True:
-            response = input("Start a real connection to the Aubo i5? (y/n): ").lower()
-            if response == 'y':
-                real_connection = True
-                break
-            elif response == 'n':
-                real_connection = False
-                break
-            else:
-                print("Invalid input. Please enter 'y' or 'n'.")
